@@ -1,5 +1,5 @@
 // Copyright © 2023 Apple Inc.
-//
+
 #include <json.hpp>
 #include <stack>
 
