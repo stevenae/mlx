@@ -170,10 +170,17 @@ struct GroupImpl {
   }
 
   void send(const char* buf, size_t len, int dst) {
-    ssize_t r = sendto(
-        socket_fd_, buf, len, 0, peers_[dst].sockaddr(), peers_[dst].len);
-    if (r < 0) {
-      throw std::runtime_error("Send failed.");
+    while (len > 0) {
+      size_t l = std::min(len, 8192ul);
+      ssize_t r = sendto(
+          socket_fd_, buf, l, 0, peers_[dst].sockaddr(), peers_[dst].len);
+      if (r <= 0) {
+        std::ostringstream msg;
+        msg << "Send of " << l << " bytes failed (errno: " << errno << ")";
+        throw std::runtime_error(msg.str());
+      }
+      len -= l;
+      buf += l;
     }
   }
 
