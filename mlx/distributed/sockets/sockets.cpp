@@ -168,7 +168,7 @@ struct GroupImpl {
     int success;
 
     // If we are expecting anyone to connect to us
-    if (rank_ < peers.size() - 1) {
+    if (rank_ + 1 < peers.size()) {
       // Create the socket to wait for connections from the peers
       int sock = socket(AF_INET, SOCK_STREAM, 0);
       if (sock < 0) {
