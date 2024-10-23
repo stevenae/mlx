@@ -198,7 +198,9 @@ void quant_sdpa_vector(
     const array& v_scales,
     const array& v_biases,
     array& out,
-    float scale) {
+    float scale,
+    int group_size,
+    int bits) {
   // Set the kernel name
   std::string kname;
   kname.reserve(96);
@@ -206,6 +208,10 @@ void quant_sdpa_vector(
   kname += get_type_string(q.dtype());
   kname += "_";
   kname += std::to_string(q.shape(-1));
+  kname += "_";
+  kname += std::to_string(group_size);
+  kname += "_";
+  kname += std::to_string(bits);
 
   // Compute the necessary sizes
   int gqa_factor = q.shape(1) / k.shape(1);
@@ -314,7 +320,19 @@ void ScaledDotProductAttention::eval_gpu(
     }
 
     quant_sdpa_vector(
-        s, d, q, k, k_scales, k_biases, v, v_scales, v_biases, o, scale_);
+        s,
+        d,
+        q,
+        k,
+        k_scales,
+        k_biases,
+        v,
+        v_scales,
+        v_biases,
+        o,
+        scale_,
+        group_size_,
+        bits_);
 
   }
 

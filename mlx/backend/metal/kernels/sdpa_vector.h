@@ -118,6 +118,67 @@ template <typename T, int D>
   }
 }
 
+template <typename T, typename U, int elem_per_thread, int bits>
+METAL_FUNC U load_queries(const device T* queries, thread U* q, U scale) {
+  U query_sum = 0;
+  if (bits == 4) {
+    for (int i = 0; i < elem_per_thread; i += 4) {
+      q[i] = scale * queries[i];
+      q[i + 1] = scale * queries[i + 1];
+      q[i + 2] = scale * queries[i + 2];
+      q[i + 3] = scale * queries[i + 3];
+      query_sum += q[i] + q[i + 1] + q[i + 2] + q[i + 3];
+      q[i + 1] /= 16.0f;
+      q[i + 2] /= 256.0f;
+      q[i + 3] /= 4096.0f;
+    }
+  } else if (bits == 8) {
+    for (int i = 0; i < elem_per_thread; i++) {
+      q[i] = scale * queries[i];
+      query_sum += q[i];
+    }
+  }
+  return query_sum;
+}
+
+template <typename U, int elem_per_thread, int bits>
+METAL_FUNC void load_keys(const device uint32_t* keys, thread U* k) {
+  if (bits == 4) {
+    auto ks = (const device uint16_t*)keys;
+    for (int i = 0; i < elem_per_thread / 4; i++) {
+      k[4 * i] = ks[i] & 0x000f;
+      k[4 * i + 1] = ks[i] & 0x00f0;
+      k[4 * i + 2] = ks[i] & 0x0f00;
+      k[4 * i + 3] = ks[i] & 0xf000;
+    }
+  } else if (bits == 8) {
+    auto ks = (const device uint8_t*)keys;
+    for (int i = 0; i < elem_per_thread; i++) {
+      k[i] = ks[i];
+    }
+  }
+}
+
+template <typename U, int elem_per_thread, int bits>
+METAL_FUNC void load_values(
+    const device uint32_t* values,
+    thread U* v,
+    U value_scale,
+    U value_bias) {
+  auto vs = (const device uint8_t*)values;
+  if (bits == 4) {
+    U s[2] = {value_scale, value_scale / 16.0f};
+    for (int i = 0; i < elem_per_thread / 2; i++) {
+      v[2 * i] = s[0] * (vs[i] & 0x0f) + value_bias;
+      v[2 * i + 1] = s[1] * (vs[i] & 0xf0) + value_bias;
+    }
+  } else if (bits == 8) {
+    for (int i = 0; i < elem_per_thread; i++) {
+      v[i] = value_scale * vs[i] + value_bias;
+    }
+  }
+}
+
 template <typename T, int D, int group_size, int bits>
 [[kernel]] void quant_sdpa_vector(
     const device T* queries [[buffer(0)]],
@@ -174,15 +235,8 @@ template <typename T, int D, int group_size, int bits>
   out += head_idx * D + simd_gid * elem_per_thread;
 
   // Read the query and 0 the output accumulator
-  U query_sum = 0;
-  U shifts[4] = {1, 16, 256, 4096};
-  for (int i = 0; i < elem_per_thread; i++) {
-    // Shift by the appropriate amount here
-    U shift = shifts[i % 4];
-    q[i] = static_cast<U>(scale) * queries[i];
-    query_sum += q[i];
-    q[i] /= shift;
-  }
+  U query_sum = load_queries<T, U, elem_per_thread, bits>(
+      queries, q, static_cast<U>(scale));
   for (int i = 0; i < elem_per_thread; i++) {
     o[i] = 0;
   }
@@ -192,15 +246,9 @@ template <typename T, int D, int group_size, int bits>
 
   // For each key
   for (int i = quad_gid; i < N; i += BN) {
-    // Read the key
-    auto ks = (const device uint16_t*)keys;
-    for (int i = 0; i < elem_per_thread / 4; i++) {
-      k[4 * i] = ks[i] & 0x000f;
-      k[4 * i + 1] = ks[i] & 0x00f0;
-      k[4 * i + 2] = ks[i] & 0x0f00;
-      k[4 * i + 3] = ks[i] & 0xf000;
-    }
-    // All the keys in a set are in the same group
+    load_keys<U, elem_per_thread, bits>(keys, k);
+
+    // Assume D % group_size == 0 so all the keys are in the same group
     U key_scale = key_scales[0];
     U key_bias = key_biases[0];
 
@@ -224,18 +272,7 @@ template <typename T, int D, int group_size, int bits>
     U value_bias = value_biases[0];
 
     // Load the values
-    auto vs = (const device uint16_t*)values;
-    U s[4] = {
-        value_scale,
-        value_scale / 16.0f,
-        value_scale / 256.0f,
-        value_scale / 4096.0f};
-    for (int i = 0; i < elem_per_thread / 4; i++) {
-      v[4 * i] = s[0] * (vs[i] & 0x000f) + value_bias;
-      v[4 * i + 1] = s[1] * (vs[i] & 0x00f0) + value_bias;
-      v[4 * i + 2] = s[2] * (vs[i] & 0x0f00) + value_bias;
-      v[4 * i + 3] = s[3] * (vs[i] & 0xf000) + value_bias;
-    }
+    load_values<U, elem_per_thread, bits>(values, v, value_scale, value_bias);
 
     // Update the output accumulator
     for (int i = 0; i < elem_per_thread; i++) {
