@@ -9,8 +9,6 @@
 #include "mlx/backend/metal/kernels/scaled_dot_product_attention_params.h"
 #include "mlx/fast_primitives.h"
 
-#include <iostream>
-
 namespace mlx::core::fast {
 
 namespace {

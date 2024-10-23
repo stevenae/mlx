@@ -10,8 +10,6 @@
 #include "mlx/ops.h"
 #include "mlx/transforms.h"
 
-#include <iostream>
-
 namespace mlx::core::fast {
 
 std::vector<array> Custom::vjp(
