@@ -165,7 +165,7 @@ void sdpa_vector(
   int N = k.shape(2);
   int B = q.shape(0) * q.shape(1);
   size_t stride = k.strides()[1];
-  MTL::Size group_dims(128, 1, 1);
+  MTL::Size group_dims(1024, 1, 1);
   MTL::Size grid_dims(1, B, 1);
 
   // Get the kernel
