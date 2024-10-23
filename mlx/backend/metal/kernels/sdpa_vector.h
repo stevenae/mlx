@@ -178,9 +178,10 @@ template <typename T, int D, int group_size, int bits>
   U shifts[4] = {1, 16, 256, 4096};
   for (int i = 0; i < elem_per_thread; i++) {
     // Shift by the appropriate amount here
-    query_sum += queries[i];
     U shift = shifts[i % 4];
-    q[i] = static_cast<U>(scale) * queries[i] / shift;
+    q[i] = static_cast<U>(scale) * queries[i];
+    query_sum += q[i];
+    q[i] /= shift;
   }
   for (int i = 0; i < elem_per_thread; i++) {
     o[i] = 0;

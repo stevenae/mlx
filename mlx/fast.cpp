@@ -687,7 +687,6 @@ array quantized_scaled_dot_product_attention(
   auto n_q_heads = queries.shape(-3);
   auto n_kv_heads = keys.shape(-3);
 
-  std::cout << "group bits " << group_size << " " << bits << std::endl;
   auto out_shape = std::vector<int>(
       {queries.shape(0), queries.shape(1), queries.shape(2), out_dim});
   auto stream = to_stream(s);
@@ -747,7 +746,8 @@ array quantized_scaled_dot_product_attention(
     return std::vector<array>{out};
   };
 
-  if (true) {
+  int L = queries.shape(2);
+  if (L > 1) {
     if (needs_mask) {
       return fallback(
           {queries,
