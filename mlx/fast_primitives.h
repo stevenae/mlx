@@ -255,6 +255,36 @@ class AffineQuantize : public Custom {
   bool dequantize_;
 };
 
+class KVUpdate : public Custom {
+ public:
+  explicit KVUpdate(
+      Stream stream,
+      std::function<std::vector<array>(std::vector<array>)> fallback,
+      int offset,
+      int group_size,
+      int bits)
+      : Custom(stream, fallback),
+        offset_(offset),
+        group_size_(group_size),
+        bits_(bits) {}
+
+  void eval_cpu(const std::vector<array>& inputs, std::vector<array>& outputs)
+      override {
+    throw std::runtime_error("NYI");
+  }
+
+  void eval_gpu(const std::vector<array>& inputs, std::vector<array>& outputs)
+      override;
+
+  DEFINE_PRINT(KVUpdate);
+
+ private:
+  std::function<std::vector<array>(std::vector<array>)> fallback_;
+  int offset_;
+  int group_size_;
+  int bits_;
+};
+
 struct CustomKernelShapeInfo {
   bool shape = false;
   bool strides = false;

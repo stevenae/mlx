@@ -123,6 +123,7 @@ NO_GPU_MULTI(RMSNormVJP)
 NO_GPU_MULTI(RoPE)
 NO_GPU(ScaledDotProductAttention)
 NO_GPU_MULTI(AffineQuantize)
+NO_GPU_MULTI(KVUpdate)
 NO_GPU_MULTI(CustomKernel)
 } // namespace fast
 

@@ -1,6 +1,7 @@
 // Copyright © 2023-2024 Apple Inc.
 
 #include <cassert>
+#include <iostream>
 
 #include "mlx/backend/common/compiled.h"
 #include "mlx/backend/metal/copy.h"
@@ -349,6 +350,82 @@ void fast::AffineQuantize::eval_gpu(
   }
   MTL::Size grid_dims = use_2d ? get_2d_grid_dims(grid_shape, w.strides())
                                : MTL::Size(nthreads, 1, 1);
+  compute_encoder.dispatchThreads(grid_dims, group_dims);
+
+  d.add_temporaries(std::move(copies), s.index);
+}
+
+void fast::KVUpdate::eval_gpu(
+    const std::vector<array>& inputs,
+    std::vector<array>& outputs) {
+  auto& s = stream();
+  auto& d = metal::device(s.device);
+
+  std::vector<array> copies;
+  auto ensure_row_contiguous = [&copies, &s](const array& arr) {
+    if (arr.flags().row_contiguous) {
+      return arr;
+    } else {
+      array arr_copy(arr.shape(), arr.dtype(), nullptr, {});
+      copy_gpu(arr, arr_copy, CopyType::General, s);
+      copies.push_back(arr_copy);
+      return arr_copy;
+    }
+  };
+
+  // Copy from the inputs into the outputs
+  const auto& new_keys = ensure_row_contiguous(inputs[0]);
+  const auto& new_values = ensure_row_contiguous(inputs[1]);
+
+  // Copy the input KV cache to the output.
+  // If the inputs are contiguous, this will be zero-copy.
+  for (int i = 0; i < 6; i++) {
+    auto in = ensure_row_contiguous(inputs[i + 2]);
+    auto out = outputs[i];
+    auto ctype = in.flags().contiguous && in.size() == in.data_size()
+        ? CopyType::Vector
+        : CopyType::General;
+    copy_gpu(in, out, in.data_size() == 1 ? CopyType::Scalar : ctype, s);
+  }
+
+  auto& compute_encoder = d.get_command_encoder(s.index);
+  compute_encoder.set_input_array(new_keys, 0);
+  compute_encoder.set_input_array(new_values, 1);
+  int enc_offset = 2;
+  for (auto& out : outputs) {
+    compute_encoder.set_output_array(out, enc_offset);
+    enc_offset++;
+  }
+  int offset = offset_ * inputs[2].strides(-2) * 4;
+  // std::cout << "offset " << offset << std::endl;
+  int batch_stride = inputs[2].shape(-1) * inputs[2].shape(-2);
+  // std::cout << "batch stride " << batch_stride << std::endl;
+  compute_encoder->setBytes(&offset, sizeof(int), enc_offset);
+  compute_encoder->setBytes(&batch_stride, sizeof(int), enc_offset + 1);
+
+  auto type_string = get_type_string(new_keys.dtype());
+  // Now launch the kernel
+  std::ostringstream kname;
+  kname << "kv_update" << "_" << type_string << "_gs_" << group_size_ << "_b_"
+        << bits_;
+  auto template_def = get_template_definition(
+      kname.str(), "kv_update", type_string, group_size_, bits_);
+  auto kernel = get_quantized_kernel(d, kname.str(), template_def);
+  compute_encoder->setComputePipelineState(kernel);
+
+  int per_thread = 8 / bits_;
+  size_t nrows = new_keys.size() / new_keys.shape(-1);
+  size_t ncols = new_keys.shape(-1) / per_thread;
+  size_t nthreads = nrows * ncols;
+  // std::cout << "nthreads " << nthreads << std::endl;
+  // std::cout << "nrows " << nrows << std::endl;
+  // std::cout << "ncols " << ncols << std::endl;
+  NS::UInteger thread_group_size = kernel->maxTotalThreadsPerThreadgroup();
+  if (thread_group_size > nthreads) {
+    thread_group_size = ncols;
+  }
+  auto group_dims = MTL::Size(thread_group_size, 1, 1);
+  MTL::Size grid_dims = MTL::Size(ncols, nrows, 1);
   compute_encoder.dispatchThreads(grid_dims, group_dims);
 
   d.add_temporaries(std::move(copies), s.index);

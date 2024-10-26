@@ -78,6 +78,20 @@ array affine_dequantize(
     int bits = 4,
     StreamOrDevice s = {});
 
+std::vector<array> kv_update(
+    const array& new_keys,
+    const array& new_values,
+    const array& keys,
+    const array& key_scales,
+    const array& key_biases,
+    const array& values,
+    const array& value_scales,
+    const array& value_biases,
+    int offset,
+    int group_size = 64,
+    int bits = 4,
+    StreamOrDevice s = {});
+
 typedef std::variant<int, bool, Dtype> TemplateArg;
 
 typedef std::function<std::vector<array>(

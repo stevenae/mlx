@@ -1737,13 +1737,13 @@ template <
 }
 
 template <typename T, const int group_size, const int bits>
-[[kernel]] void affine_quantize(
-    const device T* w [[buffer(0)]],
-    device uint8_t* out [[buffer(1)]],
-    device T* scales [[buffer(2)]],
-    device T* biases [[buffer(3)]],
-    uint2 index [[thread_position_in_grid]],
-    uint2 grid_dim [[threads_per_grid]]) {
+METAL_FUNC void affine_quantize_impl(
+    const device T* w,
+    device uint8_t* out,
+    device T* scales,
+    device T* biases,
+    uint2 index,
+    uint2 grid_dim) {
   constexpr T eps = T(1e-7);
   constexpr int simd_size = 32;
   constexpr int uint8_bits = 8;
@@ -1821,6 +1821,18 @@ template <typename T, const int group_size, const int bits>
 }
 
 template <typename T, const int group_size, const int bits>
+[[kernel]] void affine_quantize(
+    const device T* w [[buffer(0)]],
+    device uint8_t* out [[buffer(1)]],
+    device T* scales [[buffer(2)]],
+    device T* biases [[buffer(3)]],
+    uint2 index [[thread_position_in_grid]],
+    uint2 grid_dim [[threads_per_grid]]) {
+  affine_quantize_impl<T, group_size, bits>(
+      w, out, scales, biases, index, grid_dim);
+}
+
+template <typename T, const int group_size, const int bits>
 [[kernel]] void affine_quantize_scales_biases(
     const device T* w [[buffer(0)]],
     const device T* scales [[buffer(1)]],
@@ -1882,4 +1894,42 @@ template <typename T, const int group_size, const int bits>
     }
     out[oindex + i] = scale * d + bias;
   }
+}
+
+template <typename T, const int group_size, const int bits>
+[[kernel]] void kv_update(
+    const device T* new_keys [[buffer(0)]],
+    const device T* new_values [[buffer(1)]],
+    device uint8_t* keys [[buffer(2)]],
+    device T* key_scales [[buffer(3)]],
+    device T* key_biases [[buffer(4)]],
+    device uint8_t* values [[buffer(5)]],
+    device T* value_scales [[buffer(6)]],
+    device T* value_biases [[buffer(7)]],
+    const constant int& offset,
+    const constant int& batch_stride,
+    uint2 index [[thread_position_in_grid]],
+    uint2 grid_dim [[threads_per_grid]]) {
+  // Get the right offset in the thing
+  // Need to use the head dim too
+  constexpr int pack_factor = 8 / bits;
+  uint batch_idx = index.y * batch_stride * 4 + offset;
+  new_keys += index.y * 128;
+  new_values += index.y * 128;
+  // uint batch_idx = offset;
+  // // Index to correct slice
+  uint group_idx = batch_idx * pack_factor / group_size;
+  keys += batch_idx;
+  key_scales += group_idx;
+  key_biases += group_idx;
+  values += batch_idx;
+  value_scales += group_idx;
+  value_biases += group_idx;
+
+  uint2 new_index = {index.x, 0};
+
+  affine_quantize_impl<T, group_size, bits>(
+      new_keys, keys, key_scales, key_biases, new_index, grid_dim);
+  affine_quantize_impl<T, group_size, bits>(
+      new_values, values, value_scales, value_biases, new_index, grid_dim);
 }

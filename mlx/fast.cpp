@@ -1030,6 +1030,51 @@ array affine_dequantize(
   return fallback({w, scales, biases})[0];
 }
 
+std::vector<array> kv_update(
+    const array& new_keys,
+    const array& new_values,
+    const array& keys,
+    const array& key_scales,
+    const array& key_biases,
+    const array& values,
+    const array& value_scales,
+    const array& value_biases,
+    int offset,
+    int group_size,
+    int bits,
+    StreamOrDevice s_) {
+  auto s = to_stream(s_);
+
+  int el_per_int = 32 / bits;
+  auto out_shape = keys.shape();
+  out_shape.back() = keys.shape(-1) / el_per_int;
+  auto fallback = [](const std::vector<array>& inputs) -> std::vector<array> {
+    return {inputs[0], inputs[1]};
+  };
+  return array::make_arrays(
+      {keys.shape(),
+       key_scales.shape(),
+       key_biases.shape(),
+       values.shape(),
+       value_scales.shape(),
+       value_biases.shape()},
+      {keys.dtype(),
+       key_scales.dtype(),
+       key_biases.dtype(),
+       values.dtype(),
+       value_scales.dtype(),
+       value_biases.dtype()},
+      std::make_shared<KVUpdate>(s, fallback, offset, group_size, bits),
+      {new_keys,
+       new_values,
+       keys,
+       key_scales,
+       key_biases,
+       values,
+       value_scales,
+       value_biases});
+}
+
 std::string write_signature(
     std::string func_name,
     const std::string& header,

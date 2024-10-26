@@ -14,6 +14,8 @@
 #include "mlx/scheduler.h"
 #include "mlx/utils.h"
 
+#include <iostream>
+
 namespace mlx::core {
 
 template <typename T>

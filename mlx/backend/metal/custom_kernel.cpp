@@ -15,6 +15,7 @@ void CustomKernel::eval_gpu(
   std::vector<array> copies;
 
   for (auto& out : outputs) {
+    // Copy from previous kernel
     out.set_data(allocator::malloc_or_wait(out.nbytes()));
     if (init_value_) {
       copies.emplace_back(init_value_.value(), out.dtype());
