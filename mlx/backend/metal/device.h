@@ -73,16 +73,6 @@ struct CommandEncoder {
   }
   ~CommandEncoder();
 
-  // Inputs to all kernels in the encoder including temporaries
-  std::unordered_set<const void*>& inputs() {
-    return all_inputs_;
-  };
-
-  // Outputs of all kernels in the encoder including temporaries
-  std::unordered_set<const void*> outputs() {
-    return all_outputs_;
-  };
-
  private:
   MTL::ComputeCommandEncoder* enc_;
   bool needs_barrier_{false};
@@ -90,8 +80,6 @@ struct CommandEncoder {
   std::unordered_set<MTL::Resource*> prev_outputs_;
   std::unordered_set<MTL::Resource*> next_outputs_;
   std::unordered_set<MTL::Resource*> concurrent_outputs_;
-  std::unordered_set<const void*> all_inputs_;
-  std::unordered_set<const void*> all_outputs_;
 };
 
 struct Fence {
@@ -121,11 +109,15 @@ struct DeviceStream {
   MTL::CommandBuffer* buffer{nullptr};
   int buffer_ops{0};
 
-  // The command encoder, fence, and temporaries are updated between command
-  // encoders
+  void register_inputs(const std::vector<array>& inputs);
+  void register_outputs(const std::vector<array>& inputs);
+
+  // The following variables are all reset between command encoders
   std::unique_ptr<CommandEncoder> encoder{nullptr};
   std::shared_ptr<Fence> fence;
   std::vector<array> temporaries;
+  std::unordered_set<std::shared_ptr<Fence>> waiting_on;
+  std::unordered_set<const void*> all_outputs;
 };
 
 class Device {
@@ -190,10 +182,15 @@ class Device {
 
   void set_residency_set(const MTL::ResidencySet* residency_set);
 
+  DeviceStream& get_stream(int index) {
+    return stream_map_.find(index)->second;
+  }
+
  private:
   DeviceStream& get_stream_(int index) {
     return stream_map_.find(index)->second;
   }
+
   MTL::Library* get_library_cache_(const std::string& name);
 
   MTL::Library* get_library_(const std::string& name);

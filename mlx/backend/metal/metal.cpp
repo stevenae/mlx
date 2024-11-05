@@ -60,8 +60,20 @@ std::function<void()> make_task(array arr, bool signal) {
         inputs = arr.inputs();
       }
 
+      //      if (dstream.active_without_fence()) {
+      //        for (auto& in : arr.inputs()) {
+      //          // If any input needs a fence
+      //          if (command_encoder.needs_fence(in)) {
+      //            end_encoding();
+      //            break;
+      //          }
+      //        }
+      //      }
+      auto& dstream = d.get_stream(s.index);
+      dstream.register_inputs(arr.inputs());
       debug_set_primitive_buffer_label(command_buffer, arr.primitive());
       arr.primitive().eval_gpu(arr.inputs(), outputs);
+      dstream.register_outputs(outputs);
     }
     std::vector<std::shared_ptr<array::Data>> buffers;
     for (auto& in : arr.inputs()) {
