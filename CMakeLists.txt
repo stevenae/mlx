@@ -168,11 +168,12 @@ endif()
 find_package(MPI)
 if(MPI_FOUND)
   execute_process(
-    COMMAND zsh "-c" "mpirun --version"
+    COMMAND zsh "-c" "${MPIEXEC_EXECUTABLE} --version"
     OUTPUT_VARIABLE MPI_VERSION
     ERROR_QUIET)
-  if(${MPI_VERSION} MATCHES ".*Open MPI.*")
+  if(${MPI_VERSION} MATCHES ".*Open MPI.*" OR ${MPI_VERSION} MATCHES ".*OpenRTE.*")
     target_include_directories(mlx PRIVATE ${MPI_INCLUDE_PATH})
+    target_link_libraries(mlx PRIVATE ${MPI_CXX_LIBRARIES})
   elseif(MPI_VERSION STREQUAL "")
     set(MPI_FOUND FALSE)
     message(
