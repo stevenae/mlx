@@ -1,16 +1,20 @@
 target_sources(mlx PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/primitives.cpp
                            ${CMAKE_CURRENT_SOURCE_DIR}/ops.cpp)
 
-if (MLX_BUILD_CPU)
-    if (MLX_CUSTOM_DISTRIBUTED)
-      add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/sockets)
-    elseif (MPI_FOUND)
-      add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mpi)
+if(MLX_BUILD_CPU)
+  if(MLX_CUSTOM_DISTRIBUTED)
+    if(MLX_CUSTOM_DISTRIBUTED STREQUAL "gloo")
+      message(STATUS "Distributed: using gloo backend")
+      add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/gloo)
     else()
-      target_sources(
-        mlx
-        PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/no_distributed.cpp
-      )
+      message(STATUS "Distributed: using sockets backend")
+      add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/sockets)
     endif()
+  elseif(MPI_FOUND)
+    message(STATUS "Distributed: using MPI backend")
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mpi)
+  else()
+    message(STATUS "Distributed: no support")
+    target_sources(mlx PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/no_distributed.cpp)
+  endif()
 endif()
