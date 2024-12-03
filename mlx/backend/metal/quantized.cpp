@@ -308,13 +308,13 @@ void qmm_op(
       group_dims = MTL::Size(simdgroup_size, 1, 1);
       grid_dims = MTL::Size((O + bo - 1) / bo, B, N);
       quad = true;
-    } else if (B < 6 && O % 8 == 0 && D % 512 == 0 && D >= 512) {
+    } else if (B > 0 && O % 8 == 0 && D % 512 == 0 && D >= 512) {
       name += "qmv_fast";
       int bo = 8;
       int bd = 32;
       group_dims = MTL::Size(bd, 2, 1);
       grid_dims = MTL::Size(O / bo, B, N);
-    } else if (B < 6) {
+    } else if (B > 0) {
       name += "qmv";
       int bo = 8;
       int bd = 32;
@@ -445,7 +445,8 @@ void fast::AffineQuantize::eval_gpu(
 
   // Treat uint32 as uint8 in kernel
   constexpr int uint8_per_uint32 = 4;
-  constexpr int simd_size = 32;
+  // Use quads for small group sizes
+  int simd_size = group_size_ <= 16 ? 4 : 32;
   int packs_per_int = bits_ == 3 ? 8 : bits_ == 6 ? 4 : 8 / bits_;
   int per_thread = dequantize_ ? packs_per_int : group_size_ / simd_size;
   size_t nthreads =

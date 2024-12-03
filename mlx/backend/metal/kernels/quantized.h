@@ -2006,7 +2006,8 @@ template <typename T, const int group_size, const int bits>
     uint2 index [[thread_position_in_grid]],
     uint2 grid_dim [[threads_per_grid]]) {
   constexpr T eps = T(1e-7);
-  constexpr int simd_size = 32;
+  constexpr bool use_quads = group_size <= 16;
+  constexpr int simd_size = use_quads ? 4 : 32;
   constexpr T n_bins = (1 << bits) - 1;
   constexpr int packs_per_int = bits == 3 ? 8 : bits == 6 ? 4 : 8 / bits;
   constexpr int values_per_reduce = group_size / simd_size;
@@ -2038,8 +2039,13 @@ template <typename T, const int group_size, const int bits>
     w_max = max(w_max, val);
   }
 
-  w_min = simd_min(w_min);
-  w_max = simd_max(w_max);
+  if (use_quads) {
+    w_min = quad_min(w_min);
+    w_max = quad_max(w_max);
+  } else {
+    w_min = simd_min(w_min);
+    w_max = simd_max(w_max);
+  }
 
   T scale = max((w_max - w_min) / n_bins, eps);
   bool side = abs(w_min) > abs(w_max);

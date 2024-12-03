@@ -729,7 +729,8 @@ std::tuple<array, array, array>
 affine_quantize(const array& w, int group_size, int bits, StreamOrDevice s_) {
   auto s = to_stream(s_);
 
-  if (group_size != 32 && group_size != 64 && group_size != 128) {
+  if (group_size != 16 && group_size != 32 && group_size != 64 &&
+      group_size != 128) {
     std::ostringstream msg;
     msg << "[quantize] The requested group size " << group_size
         << " is not supported. The supported group sizes are 64 and 128.";
