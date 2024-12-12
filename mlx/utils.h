@@ -111,6 +111,7 @@ enum class QuantizationType {
 };
 
 std::ostream& operator<<(std::ostream& os, QuantizationType type);
+QuantizationType from_string(const std::string& s);
 
 namespace env {
 

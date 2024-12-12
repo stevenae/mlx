@@ -158,6 +158,17 @@ std::ostream& operator<<(std::ostream& os, QuantizationType type) {
   return os << quantization_type;
 }
 
+QuantizationType from_string(const std::string& s) {
+  if (s == "affine") {
+    return QuantizationType::Affine;
+  }
+  if (s == "affine-packed") {
+    return QuantizationType::AffinePacked;
+  }
+
+  throw std::invalid_argument("Cannot map '" + s + "' to a quantization type");
+}
+
 namespace {
 
 inline size_t
