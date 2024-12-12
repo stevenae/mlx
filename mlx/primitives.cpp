@@ -2777,10 +2777,11 @@ std::vector<array> QuantizedMatmul::vjp(
           cotangents[0],
           primals[1],
           primals[2],
-          primals[3],
+          (primals.size() > 3) ? std::optional(primals[3]) : std::nullopt,
           !transpose_,
           group_size_,
           bits_,
+          type_,
           stream()));
     }
 
@@ -2855,6 +2856,7 @@ std::vector<array> GatherQMM::vjp(
                       !transpose_,
                       group_size_,
                       bits_,
+                      type_,
                       stream()),
                   -3,
                   stream()),

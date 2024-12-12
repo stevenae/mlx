@@ -100,6 +100,18 @@ inline int next_power_of_2(int n) {
   return pow(2, std::ceil(std::log2(n)));
 }
 
+/** Enumerate the different quantization types */
+enum class QuantizationType {
+  // Traditional affine quantization with separate scales and biases
+  Affine,
+
+  // The same quantization as affine but with the scales and biases packed in a
+  // single array and contiguously every 4 rows
+  AffinePacked,
+};
+
+std::ostream& operator<<(std::ostream& os, QuantizationType type);
+
 namespace env {
 
 int get_var(const char* name, int default_value);

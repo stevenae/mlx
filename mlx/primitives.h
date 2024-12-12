@@ -8,6 +8,7 @@
 #include "mlx/device.h"
 #include "mlx/io/load.h"
 #include "mlx/stream.h"
+#include "mlx/utils.h"
 
 #define DEFINE_VMAP()                                                 \
   virtual std::pair<std::vector<array>, std::vector<int>> vmap(       \
@@ -1568,10 +1569,12 @@ class QuantizedMatmul : public UnaryPrimitive {
  public:
   explicit QuantizedMatmul(
       Stream stream,
+      QuantizationType type,
       int group_size,
       int bits,
       bool transpose)
       : UnaryPrimitive(stream),
+        type_(type),
         group_size_(group_size),
         bits_(bits),
         transpose_(transpose) {}
@@ -1586,6 +1589,7 @@ class QuantizedMatmul : public UnaryPrimitive {
   std::vector<Shape> output_shapes(const std::vector<array>& inputs) override;
 
  private:
+  QuantizationType type_;
   int group_size_;
   int bits_;
   bool transpose_;
@@ -1595,8 +1599,14 @@ class QuantizedMatmul : public UnaryPrimitive {
 
 class GatherQMM : public UnaryPrimitive {
  public:
-  explicit GatherQMM(Stream stream, int group_size, int bits, bool transpose)
+  explicit GatherQMM(
+      Stream stream,
+      QuantizationType type,
+      int group_size,
+      int bits,
+      bool transpose)
       : UnaryPrimitive(stream),
+        type_(type),
         group_size_(group_size),
         bits_(bits),
         transpose_(transpose) {}
@@ -1610,6 +1620,7 @@ class GatherQMM : public UnaryPrimitive {
   bool is_equivalent(const Primitive& other) const override;
 
  private:
+  QuantizationType type_;
   int group_size_;
   int bits_;
   bool transpose_;

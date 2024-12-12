@@ -145,6 +145,19 @@ std::ostream& operator<<(std::ostream& os, uint8_t x) {
   return os;
 }
 
+std::ostream& operator<<(std::ostream& os, QuantizationType type) {
+  std::string_view quantization_type;
+  switch (type) {
+    case QuantizationType::Affine:
+      quantization_type = "affine";
+      break;
+    case QuantizationType::AffinePacked:
+      quantization_type = "affine-packed";
+      break;
+  }
+  return os << quantization_type;
+}
+
 namespace {
 
 inline size_t
