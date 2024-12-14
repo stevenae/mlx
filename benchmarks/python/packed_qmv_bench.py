@@ -7,7 +7,7 @@ from time_utils import time_fn
 
 D = 8192
 group_size = 64
-bits = 3
+bits = 4
 dtype = mx.float16
 loops = 100
 

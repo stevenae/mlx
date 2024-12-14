@@ -128,14 +128,9 @@ std::pair<int, int> extract_quantized_matmul_dims(
   }
 
   int weight_dims = w.shape(-1) * 32 / bits;
-  int scales_dims;
-  switch (type) {
-    case QuantizationType::Affine:
-      scales_dims = scales.shape(-1) * group_size;
-      break;
-    case QuantizationType::AffinePacked:
-      scales_dims = scales.shape(-2) * group_size;
-      break;
+  int scales_dims = scales.shape(-1) * group_size;
+  if (type == QuantizationType::AffinePacked) {
+    scales_dims /= 8;
   }
 
   if (weight_dims != scales_dims) {
@@ -3787,12 +3782,14 @@ std::tuple<array, array, std::optional<array>> quantize(
 
   // Pack scales and biases
   if (type == QuantizationType::AffinePacked) {
-    array packed_scales_biases =
-        flatten(stack({scales, biases}, -2, s), -3, -2, s);
-    packed_scales_biases =
-        contiguous(moveaxis(packed_scales_biases, -2, -1, s), false, s);
+    scales = unflatten(scales, -2, {-1, 4, 1}, s);
+    biases = unflatten(biases, -2, {-1, 4, 1}, s);
+    scales = concatenate({scales, biases}, -2, s);
+    scales = flatten(scales, -3, -2, s);
+    scales = moveaxis(scales, -2, -1, s);
+    scales = flatten(scales, -2, -1, s);
 
-    return std::make_tuple(wq, packed_scales_biases, std::nullopt);
+    return std::make_tuple(wq, scales, std::nullopt);
   } else {
     return std::make_tuple(wq, scales, biases);
   }

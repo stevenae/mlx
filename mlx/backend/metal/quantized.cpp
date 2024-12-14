@@ -433,16 +433,6 @@ void affine_packed_qmv(
   compute_encoder.dispatch_threadgroups(grid_dims, group_dims);
 }
 
-void affine_packed_qmm(
-    const std::vector<array>& inputs,
-    array& out,
-    int B,
-    int D,
-    int O,
-    int group_size,
-    int bits,
-    const Stream& s) {}
-
 void affine_packed_qmm_op(
     const std::vector<array>& inputs,
     array& out,
@@ -461,7 +451,6 @@ void affine_packed_qmm_op(
     if (B < 6) {
       affine_packed_qmv(inputs, out, B, D, O, group_size, bits, s);
     } else {
-      affine_packed_qmm(inputs, out, B, D, O, group_size, bits, s);
     }
   } else {
   }
