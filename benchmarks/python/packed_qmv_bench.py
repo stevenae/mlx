@@ -5,11 +5,11 @@ from functools import partial
 import mlx.core as mx
 from time_utils import time_fn
 
-D = 16384
+D = 8192
 group_size = 64
 bits = 3
 dtype = mx.float16
-loops = 10
+loops = 100
 
 
 def qmv_(x, wq, q_type):

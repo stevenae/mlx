@@ -2180,34 +2180,28 @@ METAL_FUNC void affine_packed_qmv_fast_impl(
 
   // Adjust positions
   const int in_vec_size_w = in_vec_size * bytes_per_pack / pack_factor;
-  const int in_vec_size_g =
-      in_vec_size * results_per_simdgroup * 2 / group_size;
-  const int scales_row = tid.x * num_simdgroups + simd_gid;
-  const int out_row = scales_row * results_per_simdgroup;
+  const int out_vec_size_g = 2 * out_vec_size;
+  const int out_row = tid.x * (num_simdgroups * results_per_simdgroup) +
+      simd_gid * results_per_simdgroup;
+  const int scales_blocksize = (block_size / group_size) * out_vec_size_g;
 
   ws += out_row * in_vec_size_w + simd_lid * packs_per_thread * bytes_per_pack;
-  scales += scales_row * in_vec_size_g +
-      results_per_simdgroup * 2 * (simd_lid / scale_step_per_thread);
+  scales += (simd_lid / scale_step_per_thread) * out_vec_size_g + 2 * out_row;
   x += tid.y * in_vec_size + simd_lid * values_per_thread;
   y += tid.y * out_vec_size + out_row;
 
   for (int k = 0; k < in_vec_size; k += block_size) {
     U sum = load_vector<T, U, values_per_thread, bits>(x, x_thread);
 
-    U sb[2 * results_per_simdgroup];
-    for (int i = 0; i < 2 * results_per_simdgroup; i++) {
-      sb[i] = scales[i];
-    }
-
     for (int row = 0; row < results_per_simdgroup; row++) {
       auto wl = (const device uint8_t*)(ws + row * in_vec_size_w);
       result[row] += qdot<U, values_per_thread, bits>(
-          wl, x_thread, sb[2 * row + 0], sb[2 * row + 1], sum);
+          wl, x_thread, scales[2 * row + 0], scales[2 * row + 1], sum);
     }
 
     ws += block_size * bytes_per_pack / pack_factor;
-    scales += block_size * 2 * results_per_simdgroup / group_size;
     x += block_size;
+    scales += scales_blocksize;
   }
 
   for (int row = 0; row < results_per_simdgroup; row++) {
