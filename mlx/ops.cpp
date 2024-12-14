@@ -3789,10 +3789,9 @@ std::tuple<array, array, std::optional<array>> quantize(
     case QuantizationType::AffinePacked: {
       auto [wq, scales, biases] = fast::affine_quantize(w, group_size, bits, s);
 
-      scales = unflatten(scales, -2, {-1, 4, 1}, s);
-      biases = unflatten(biases, -2, {-1, 4, 1}, s);
+      scales = unflatten(scales, -2, {-1, 4}, s);
+      biases = unflatten(biases, -2, {-1, 4}, s);
       scales = concatenate({scales, biases}, -2, s);
-      scales = flatten(scales, -3, -2, s);
       scales = moveaxis(scales, -2, -1, s);
       scales = flatten(scales, -2, -1, s);
 
