@@ -131,6 +131,7 @@ std::pair<int, int> extract_quantized_matmul_dims(
   int scales_dims = scales.shape(-1) * group_size;
   if (type == QuantizationType::AffinePacked) {
     scales_dims /= 8;
+    weight_dims /= 4;
   }
 
   if (weight_dims != scales_dims) {
@@ -147,8 +148,12 @@ std::pair<int, int> extract_quantized_matmul_dims(
   int x_inner_dims = x.shape(-1);
 
   // Calculate the expanded w's dims
-  int w_inner_dims = (transpose) ? weight_dims : w.shape(-2);
-  int w_outer_dims = (transpose) ? w.shape(-2) : weight_dims;
+  int weight_dims_other = w.shape(-2);
+  if (type == QuantizationType::AffinePacked) {
+    weight_dims_other *= 4;
+  }
+  int w_inner_dims = (transpose) ? weight_dims : weight_dims_other;
+  int w_outer_dims = (transpose) ? weight_dims_other : weight_dims;
 
   if (w_inner_dims != x_inner_dims) {
     std::ostringstream msg;
@@ -3778,20 +3783,25 @@ std::tuple<array, array, std::optional<array>> quantize(
     int bits /* = 4 */,
     QuantizationType type /* = QuantizationType::Affine */,
     StreamOrDevice s /* = {} */) {
-  auto [wq, scales, biases] = fast::affine_quantize(w, group_size, bits, s);
+  switch (type) {
+    case QuantizationType::Affine:
+      return fast::affine_quantize(w, group_size, bits, s);
+    case QuantizationType::AffinePacked: {
+      auto [wq, scales, biases] = fast::affine_quantize(w, group_size, bits, s);
 
-  // Pack scales and biases
-  if (type == QuantizationType::AffinePacked) {
-    scales = unflatten(scales, -2, {-1, 4, 1}, s);
-    biases = unflatten(biases, -2, {-1, 4, 1}, s);
-    scales = concatenate({scales, biases}, -2, s);
-    scales = flatten(scales, -3, -2, s);
-    scales = moveaxis(scales, -2, -1, s);
-    scales = flatten(scales, -2, -1, s);
+      scales = unflatten(scales, -2, {-1, 4, 1}, s);
+      biases = unflatten(biases, -2, {-1, 4, 1}, s);
+      scales = concatenate({scales, biases}, -2, s);
+      scales = flatten(scales, -3, -2, s);
+      scales = moveaxis(scales, -2, -1, s);
+      scales = flatten(scales, -2, -1, s);
 
-    return std::make_tuple(wq, scales, std::nullopt);
-  } else {
-    return std::make_tuple(wq, scales, biases);
+      wq = unflatten(wq, -2, {-1, 4}, s);
+      wq = moveaxis(wq, -2, -1, s);
+      wq = flatten(wq, -2, -1, s);
+
+      return std::make_tuple(wq, scales, std::nullopt);
+    }
   }
 }
 
