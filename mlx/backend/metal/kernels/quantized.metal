@@ -60,6 +60,14 @@
       bits,                                                         \
       split_k)
 
+#define instantiate_quantized_affine_packed(name, type, group_size, bits) \
+  instantiate_kernel(                                                     \
+      #name "_" #type "_gs_" #group_size "_b_" #bits,                     \
+      name,                                                               \
+      type,                                                               \
+      group_size,                                                         \
+      bits)
+
 #define instantiate_quantized_batched_wrap(name, type, group_size, bits) \
   instantiate_quantized_batched(name, type, group_size, bits, 1)      \
   instantiate_quantized_batched(name, type, group_size, bits, 0)
@@ -96,12 +104,16 @@
   instantiate_quantized_split_k(qvm_split_k, type, group_size, bits, 8)   \
   instantiate_quantized_split_k(qvm_split_k, type, group_size, bits, 32)
 
+#define instantiate_quantized_all_affine_packed(type, group_size, bits) \
+  instantiate_quantized_affine_packed(affine_packed_qmv_fast, type, group_size, bits)
+
 #define instantiate_quantized_funcs(type, group_size, bits) \
   instantiate_quantized_all_single(type, group_size, bits)  \
   instantiate_quantized_all_batched(type, group_size, bits) \
   instantiate_quantized_all_aligned(type, group_size, bits) \
   instantiate_quantized_all_quad(type, group_size, bits)    \
-  instantiate_quantized_all_splitk(type, group_size, bits)
+  instantiate_quantized_all_splitk(type, group_size, bits)  \
+  instantiate_quantized_all_affine_packed(type, group_size, bits)
 
 #define instantiate_quantized_types(group_size, bits)       \
   instantiate_quantized_funcs(float, group_size, bits)      \

@@ -3778,7 +3778,21 @@ std::tuple<array, array, std::optional<array>> quantize(
     int bits /* = 4 */,
     QuantizationType type /* = QuantizationType::Affine */,
     StreamOrDevice s /* = {} */) {
-  return fast::affine_quantize(w, group_size, bits, s);
+  auto [wq, scales, biases] = fast::affine_quantize(w, group_size, bits, s);
+
+  // Pack scales and biases
+  if (type == QuantizationType::AffinePacked) {
+    scales = unflatten(scales, -2, {-1, 4, 1}, s);
+    biases = unflatten(biases, -2, {-1, 4, 1}, s);
+    scales = concatenate({scales, biases}, -2, s);
+    scales = flatten(scales, -3, -2, s);
+    scales = moveaxis(scales, -2, -1, s);
+    scales = flatten(scales, -2, -1, s);
+
+    return std::make_tuple(wq, scales, std::nullopt);
+  } else {
+    return std::make_tuple(wq, scales, biases);
+  }
 }
 
 array dequantize(

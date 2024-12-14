@@ -377,10 +377,102 @@ void qmm_op(
       s);
 }
 
+void affine_packed_qmv(
+    const std::vector<array>& inputs,
+    array& out,
+    int B,
+    int D,
+    int O,
+    int group_size,
+    int bits,
+    const Stream& s) {
+  out.set_data(allocator::malloc_or_wait(out.nbytes()));
+
+  auto& d = metal::device(s.device);
+  auto ensure_row_contiguous_last_dims = [&d, &s](const array& arr) {
+    auto stride_0 = arr.strides()[arr.ndim() - 2];
+    auto stride_1 = arr.strides()[arr.ndim() - 1];
+    if (stride_0 == arr.shape(-1) && stride_1 == 1) {
+      return arr;
+    } else {
+      array arr_copy(arr.shape(), arr.dtype(), nullptr, {});
+      copy_gpu(arr, arr_copy, CopyType::General, s);
+      d.add_temporary(arr_copy, s.index);
+      return arr_copy;
+    }
+  };
+  auto x = ensure_row_contiguous_last_dims(inputs[0]);
+  auto w = ensure_row_contiguous_last_dims(inputs[1]);
+  auto scales = ensure_row_contiguous_last_dims(inputs[2]);
+
+  const int n_simdgroups = 2;
+  const int n_outs_per_simdgroup = 4;
+  MTL::Size group_dims(32, n_simdgroups, 1);
+  MTL::Size grid_dims(O / n_simdgroups / n_outs_per_simdgroup, B, 1);
+
+  std::string name;
+  name.reserve(64);
+  concatenate(
+      name,
+      (D % 512 == 0) ? "affine_packed_qmv_fast_" : "affine_packed_qmv_",
+      get_type_string(out.dtype()),
+      "_gs_",
+      std::to_string(group_size),
+      "_b_",
+      std::to_string(bits));
+  auto kernel = get_quantized_kernel(d, name, "");
+  auto& compute_encoder = d.get_command_encoder(s.index);
+  compute_encoder.set_compute_pipeline_state(kernel);
+
+  compute_encoder.set_input_array(w, 0);
+  compute_encoder.set_input_array(scales, 1);
+  compute_encoder.set_input_array(x, 2);
+  compute_encoder.set_output_array(out, 3);
+  compute_encoder.set_bytes(D, 5);
+  compute_encoder.set_bytes(O, 6);
+  compute_encoder.dispatch_threadgroups(grid_dims, group_dims);
+}
+
+void affine_packed_qmm_op(
+    const std::vector<array>& inputs,
+    array& out,
+    bool transpose,
+    int group_size,
+    int bits,
+    const Stream& s) {
+  auto& x = inputs[0];
+  auto& w = inputs[1];
+  bool batched = w.ndim() > 2;
+  int D = x.shape(-1);
+  int O = out.shape(-1);
+  int B = (batched) ? x.shape(-2) : x.size() / D;
+
+  if (transpose) {
+    if (B < 6) {
+      affine_packed_qmv(inputs, out, B, D, O, group_size, bits, s);
+    } else {
+    }
+  } else {
+  }
+}
+
 void QuantizedMatmul::eval_gpu(const std::vector<array>& inputs, array& out) {
-  assert(inputs.size() == 4);
-  qmm_op(
-      inputs, out, transpose_, group_size_, bits_, /*gather=*/false, stream());
+  if (type_ == QuantizationType::Affine) {
+    assert(inputs.size() == 4);
+    qmm_op(
+        inputs,
+        out,
+        transpose_,
+        group_size_,
+        bits_,
+        /*gather=*/false,
+        stream());
+  }
+
+  if (type_ == QuantizationType::AffinePacked) {
+    assert(inputs.size() == 3);
+    affine_packed_qmm_op(inputs, out, transpose_, group_size_, bits_, stream());
+  }
 }
 
 void GatherQMM::eval_gpu(const std::vector<array>& inputs, array& out) {
