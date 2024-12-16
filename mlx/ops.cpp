@@ -99,6 +99,12 @@ std::pair<int, int> extract_quantized_matmul_dims(
             << "biases but biases were provided";
         throw std::invalid_argument(msg.str());
       }
+      if (bits & (bits - 1)) {
+        std::ostringstream msg;
+        msg << "[" << tag << "] Quantization type '" << type
+            << "' does not support " << bits << " bits.";
+        throw std::invalid_argument(msg.str());
+      }
       break;
   }
 
@@ -3787,6 +3793,12 @@ std::tuple<array, array, std::optional<array>> quantize(
     case QuantizationType::Affine:
       return fast::affine_quantize(w, group_size, bits, s);
     case QuantizationType::AffinePacked: {
+      if (bits & (bits - 1)) {
+        std::ostringstream msg;
+        msg << "[quantize] Quantization type '" << type << "' does not support "
+            << bits << " bits.";
+        throw std::invalid_argument(msg.str());
+      }
       auto [wq, scales, biases] = fast::affine_quantize(w, group_size, bits, s);
 
       scales = unflatten(scales, -2, {-1, 4}, s);
