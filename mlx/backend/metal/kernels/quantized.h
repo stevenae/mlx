@@ -2171,10 +2171,11 @@ inline vec<U, 4> partial_qdot_vec(const thread U* x, vec<uint32_t, 4> w) {
 
   else if (bits == 4) {
     for (int i = 0; i < 4; i++) {
-      auto ws = as_type<vec<uint8_t, 4>>(w[i]);
-      for (int j = 0; j < 4; j++) {
-        accum[j] +=
-            x[2 * i + 0] * (ws[j] & 0x0f) + x[2 * i + 1] * (ws[j] & 0xf0);
+      auto ws = as_type<vec<uint16_t, 2>>(w[i]);
+      for (int j = 0; j < 2; j++) {
+        accum[i] +=
+            (x[4 * j + 0] * (ws[j] & 0x000f) + x[4 * j + 1] * (ws[j] & 0x00f0) +
+             x[4 * j + 2] * (ws[j] & 0x0f00) + x[4 * j + 3] * (ws[j] & 0xf000));
       }
     }
   }
@@ -2183,7 +2184,7 @@ inline vec<U, 4> partial_qdot_vec(const thread U* x, vec<uint32_t, 4> w) {
     for (int i = 0; i < 4; i++) {
       auto ws = as_type<vec<uint8_t, 4>>(w[i]);
       for (int j = 0; j < 4; j++) {
-        accum[j] += x[i] * ws[j];
+        accum[i] += x[j] * ws[j];
       }
     }
   }

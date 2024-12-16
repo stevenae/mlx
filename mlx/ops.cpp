@@ -3795,11 +3795,9 @@ std::tuple<array, array, std::optional<array>> quantize(
       scales = moveaxis(scales, -2, -1, s);
       scales = flatten(scales, -2, -1, s);
 
-      wq = view(wq, uint8, s);
       wq = unflatten(wq, -2, {-1, 4}, s);
       wq = moveaxis(wq, -2, -1, s);
       wq = flatten(wq, -2, -1, s);
-      wq = view(wq, uint32, s);
 
       return std::make_tuple(wq, scales, std::nullopt);
     }
