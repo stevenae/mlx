@@ -79,29 +79,29 @@ std::pair<int, int> extract_quantized_matmul_dims(
     bool transpose,
     int group_size,
     int bits,
-    QuantizationType type) {
+    QuantizationType quantization_type) {
   // Check if we have biases as expected
-  switch (type) {
+  switch (quantization_type) {
     case QuantizationType::Affine:
       if (!biases.has_value()) {
         std::ostringstream msg;
         msg << "[" << tag
             << "] The biases argument is required for quantization "
-            << "type '" << type << "'";
+            << "type '" << quantization_type << "'";
         throw std::invalid_argument(msg.str());
       }
       break;
     case QuantizationType::AffinePacked:
       if (biases.has_value()) {
         std::ostringstream msg;
-        msg << "[" << tag << "] Quantization type '" << type
+        msg << "[" << tag << "] Quantization type '" << quantization_type
             << "' does not use "
             << "biases but biases were provided";
         throw std::invalid_argument(msg.str());
       }
       if (bits & (bits - 1)) {
         std::ostringstream msg;
-        msg << "[" << tag << "] Quantization type '" << type
+        msg << "[" << tag << "] Quantization type '" << quantization_type
             << "' does not support " << bits << " bits.";
         throw std::invalid_argument(msg.str());
       }
@@ -135,7 +135,7 @@ std::pair<int, int> extract_quantized_matmul_dims(
 
   int weight_dims = w.shape(-1) * 32 / bits;
   int scales_dims = scales.shape(-1) * group_size;
-  if (type == QuantizationType::AffinePacked) {
+  if (quantization_type == QuantizationType::AffinePacked) {
     scales_dims /= 8;
     weight_dims /= 4;
   }
@@ -147,7 +147,7 @@ std::pair<int, int> extract_quantized_matmul_dims(
         << "w.shape() == " << w.shape()
         << " and scales.shape() == " << scales.shape()
         << " with group_size=" << group_size << ", bits=" << bits
-        << " and type='" << type << "'";
+        << " and type='" << quantization_type << "'";
     throw std::invalid_argument(msg.str());
   }
 
@@ -155,7 +155,7 @@ std::pair<int, int> extract_quantized_matmul_dims(
 
   // Calculate the expanded w's dims
   int weight_dims_other = w.shape(-2);
-  if (type == QuantizationType::AffinePacked) {
+  if (quantization_type == QuantizationType::AffinePacked) {
     weight_dims_other *= 4;
   }
   int w_inner_dims = (transpose) ? weight_dims : weight_dims_other;
@@ -3708,7 +3708,7 @@ array quantized_matmul(
     bool transpose /* = true */,
     int group_size /* = 64 */,
     int bits /* = 4 */,
-    QuantizationType type /* = QuantizationType::Affine */,
+    QuantizationType quantization_type /* = QuantizationType::Affine */,
     StreamOrDevice s /* = {} */) {
   // Check and extract the quantized matrix shape against x
   auto [w_inner_dims, w_outer_dims] = extract_quantized_matmul_dims(
@@ -3720,7 +3720,7 @@ array quantized_matmul(
       transpose,
       group_size,
       bits,
-      type);
+      quantization_type);
 
   // QuantizedMatmul handles w.ndim == 2 case.
   if (x.ndim() > 2 && w.ndim() > 2) {
@@ -3779,7 +3779,7 @@ array quantized_matmul(
       std::move(out_shape),
       dtype,
       std::make_shared<QuantizedMatmul>(
-          to_stream(s), type, group_size, bits, transpose),
+          to_stream(s), quantization_type, group_size, bits, transpose),
       std::move(inputs));
 }
 
@@ -3787,16 +3787,16 @@ std::tuple<array, array, std::optional<array>> quantize(
     const array& w,
     int group_size /* = 64 */,
     int bits /* = 4 */,
-    QuantizationType type /* = QuantizationType::Affine */,
+    QuantizationType quantization_type /* = QuantizationType::Affine */,
     StreamOrDevice s /* = {} */) {
-  switch (type) {
+  switch (quantization_type) {
     case QuantizationType::Affine:
       return fast::affine_quantize(w, group_size, bits, s);
     case QuantizationType::AffinePacked: {
       if (bits & (bits - 1)) {
         std::ostringstream msg;
-        msg << "[quantize] Quantization type '" << type << "' does not support "
-            << bits << " bits.";
+        msg << "[quantize] Quantization type '" << quantization_type
+            << "' does not support " << bits << " bits.";
         throw std::invalid_argument(msg.str());
       }
       auto [wq, scales, biases] = fast::affine_quantize(w, group_size, bits, s);
@@ -3822,7 +3822,7 @@ array dequantize(
     const std::optional<array>& biases,
     int group_size /* = 64 */,
     int bits /* = 4 */,
-    QuantizationType type /* = QuantizationType::Affine */,
+    QuantizationType quantization_type /* = QuantizationType::Affine */,
     StreamOrDevice s /* = {} */) {
   return fast::affine_dequantize(
       w, scales, biases.value(), group_size, bits, s);
@@ -3838,21 +3838,38 @@ array gather_qmm(
     bool transpose /* = true */,
     int group_size /* = 64 */,
     int bits /* = 4 */,
-    QuantizationType type /* = QuantizationType::Affine */,
+    QuantizationType quantization_type /* = QuantizationType::Affine */,
     StreamOrDevice s /* = {} */) {
   if (!lhs_indices_ && !rhs_indices_) {
     return quantized_matmul(
-        x, w, scales, biases, transpose, group_size, bits, type, s);
+        x,
+        w,
+        scales,
+        biases,
+        transpose,
+        group_size,
+        bits,
+        quantization_type,
+        s);
   }
 
-  if (type != QuantizationType::Affine) {
+  if (quantization_type != QuantizationType::Affine) {
     std::ostringstream msg;
-    msg << "[gather_qmm] Only quantization type '" << type << "' supported";
+    msg << "[gather_qmm] Only quantization type '" << quantization_type
+        << "' supported";
     throw std::invalid_argument(msg.str());
   }
 
   auto [w_inner_dims, w_outer_dims] = extract_quantized_matmul_dims(
-      "gather_qmm", x, w, scales, biases, transpose, group_size, bits, type);
+      "gather_qmm",
+      x,
+      w,
+      scales,
+      biases,
+      transpose,
+      group_size,
+      bits,
+      quantization_type);
 
   // Extract indices and broadcast them
   array lhs_indices = indices_or_default(lhs_indices_, x, s);
@@ -3874,7 +3891,7 @@ array gather_qmm(
       std::move(out_shape),
       out_type,
       std::make_shared<GatherQMM>(
-          to_stream(s), type, group_size, bits, transpose),
+          to_stream(s), quantization_type, group_size, bits, transpose),
       {astype(x, out_type, s),
        w,
        astype(scales, out_type, s),

@@ -1286,7 +1286,7 @@ array quantized_matmul(
     bool transpose = true,
     int group_size = 64,
     int bits = 4,
-    QuantizationType type = QuantizationType::Affine,
+    QuantizationType quantization_type = QuantizationType::Affine,
     StreamOrDevice s = {});
 
 /** Quantize a matrix along its last axis */
@@ -1294,7 +1294,7 @@ std::tuple<array, array, std::optional<array>> quantize(
     const array& w,
     int group_size = 64,
     int bits = 4,
-    QuantizationType type = QuantizationType::Affine,
+    QuantizationType quantization_type = QuantizationType::Affine,
     StreamOrDevice s = {});
 
 /** Dequantize a matrix produced by quantize() */
@@ -1304,7 +1304,7 @@ array dequantize(
     const std::optional<array>& biases,
     int group_size = 64,
     int bits = 4,
-    QuantizationType type = QuantizationType::Affine,
+    QuantizationType quantization_type = QuantizationType::Affine,
     StreamOrDevice s = {});
 
 /** Compute matrix products with matrix-level gather. */
@@ -1318,7 +1318,7 @@ array gather_qmm(
     bool transpose = true,
     int group_size = 64,
     int bits = 4,
-    QuantizationType type = QuantizationType::Affine,
+    QuantizationType quantization_type = QuantizationType::Affine,
     StreamOrDevice s = {});
 
 /** Returns a contraction of a and b over multiple dimensions. */
