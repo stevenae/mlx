@@ -2295,6 +2295,68 @@ METAL_FUNC void affine_packed_qmv_fast_impl(
   }
 }
 
+template <typename T, int group_size, int bits, int results_per_simdgroup>
+METAL_FUNC void affine_packed_byte_qmv_fast_impl(
+    const device uint8_t* w,
+    const device vec<T, 2 * results_per_simdgroup>* scales,
+    const device T* x,
+    device T* y,
+    const constant int& in_vec_size,
+    const constant int& out_vec_size,
+    uint3 tid [[threadgroup_position_in_grid]],
+    uint simd_gid [[simdgroup_index_in_threadgroup]],
+    uint simd_lid [[thread_index_in_simdgroup]]) {
+  constexpr int packs_per_thread = 2;
+  constexpr int num_simdgroups = 2;
+  constexpr int pack_factor = (bits == 3) ? 8 : 4;
+  ;
+  constexpr int bytes_per_pack = 3;
+  constexpr int values_per_thread = pack_factor * packs_per_thread;
+  constexpr int block_size = values_per_thread * SIMD_SIZE;
+  constexpr int scale_step_per_thread = group_size / values_per_thread;
+
+  typedef float U;
+
+  thread U x_thread[values_per_thread];
+  vec<U, results_per_simdgroup> result = 0;
+
+  // Adjust positions
+  const int in_vec_size_w = in_vec_size * bytes_per_pack / pack_factor;
+  const int in_vec_size_g = in_vec_size / group_size;
+  const int scales_row = tid.x * num_simdgroups + simd_gid;
+  const int out_row = scales_row * results_per_simdgroup;
+
+  w += out_row * in_vec_size_w + simd_lid * (packs_per_thread * bytes_per_pack);
+  scales += scales_row * in_vec_size_g + simd_lid / scale_step_per_thread;
+  x += tid.y * in_vec_size + simd_lid * values_per_thread;
+  y += tid.y * out_vec_size + out_row;
+
+  for (int k = 0; k < in_vec_size; k += block_size) {
+    // Load the input vector
+    U sum = load_vector<T, U, values_per_thread, bits>(x, x_thread);
+
+    // Load the scales and biases
+    vec<T, 2 * results_per_simdgroup> sb = scales[0];
+
+    // Load the weights and perform the partial dot product
+    for (int row = 0; row < results_per_simdgroup; row++) {
+      result[row] += qdot<U, values_per_thread, bits>(
+          w + row * in_vec_size_w, x_thread, sb[row], sb[2 + row], sum);
+    }
+
+    w += block_size * bytes_per_pack / pack_factor;
+    scales += block_size / group_size;
+    x += block_size;
+  }
+
+  for (int row = 0; row < results_per_simdgroup; row++) {
+    result[row] = simd_sum(result[row]);
+    if (simd_lid == 0) {
+      y[row] = static_cast<T>(result[row]);
+    }
+  }
+}
+
 template <typename T, int group_size, int bits>
 [[kernel]] void affine_packed_qmv_fast(
     const device vec<uint32_t, 4>* w [[buffer(0)]],
@@ -2306,8 +2368,21 @@ template <typename T, int group_size, int bits>
     uint3 tid [[threadgroup_position_in_grid]],
     uint simd_gid [[simdgroup_index_in_threadgroup]],
     uint simd_lid [[thread_index_in_simdgroup]]) {
-  affine_packed_qmv_fast_impl<T, group_size, bits>(
-      w, scales, x, y, in_vec_size, out_vec_size, tid, simd_gid, simd_lid);
+  if (bits & (bits - 1)) {
+    affine_packed_byte_qmv_fast_impl<T, group_size, bits, 2>(
+        (const device uint8_t*)w,
+        scales,
+        x,
+        y,
+        in_vec_size,
+        out_vec_size,
+        tid,
+        simd_gid,
+        simd_lid);
+  } else {
+    affine_packed_qmv_fast_impl<T, group_size, bits>(
+        w, scales, x, y, in_vec_size, out_vec_size, tid, simd_gid, simd_lid);
+  }
 }
 
 template <
@@ -2617,6 +2692,9 @@ template <
         s_strides,
         tid);
   }
-  affine_packed_qmm_t_impl<T, group_size, bits, aligned_N, BM, BK, BN>(
-      w, scales, x, y, Xs, Ws, K, N, M, tid, lid, simd_gid, simd_lid);
+  if (bits & (bits - 1)) {
+  } else {
+    affine_packed_qmm_t_impl<T, group_size, bits, aligned_N, BM, BK, BN>(
+        w, scales, x, y, Xs, Ws, K, N, M, tid, lid, simd_gid, simd_lid);
+  }
 }

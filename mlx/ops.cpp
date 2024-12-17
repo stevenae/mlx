@@ -99,14 +99,10 @@ std::pair<int, int> extract_quantized_matmul_dims(
             << "biases but biases were provided";
         throw std::invalid_argument(msg.str());
       }
-      if (bits & (bits - 1)) {
-        std::ostringstream msg;
-        msg << "[" << tag << "] Quantization type '" << quantization_type
-            << "' does not support " << bits << " bits.";
-        throw std::invalid_argument(msg.str());
-      }
       break;
   }
+
+  bool pow2_bits = (bits & (bits - 1)) == 0;
 
   if (w.dtype() != uint32) {
     std::ostringstream msg;
@@ -136,8 +132,12 @@ std::pair<int, int> extract_quantized_matmul_dims(
   int weight_dims = w.shape(-1) * 32 / bits;
   int scales_dims = scales.shape(-1) * group_size;
   if (quantization_type == QuantizationType::AffinePacked) {
-    scales_dims /= 8;
-    weight_dims /= 4;
+    if (pow2_bits) {
+      scales_dims /= 8;
+      weight_dims /= 4;
+    } else {
+      scales_dims /= 4;
+    }
   }
 
   if (weight_dims != scales_dims) {
@@ -155,7 +155,7 @@ std::pair<int, int> extract_quantized_matmul_dims(
 
   // Calculate the expanded w's dims
   int weight_dims_other = w.shape(-2);
-  if (quantization_type == QuantizationType::AffinePacked) {
+  if (quantization_type == QuantizationType::AffinePacked && pow2_bits) {
     weight_dims_other *= 4;
   }
   int w_inner_dims = (transpose) ? weight_dims : weight_dims_other;
@@ -3793,23 +3793,22 @@ std::tuple<array, array, std::optional<array>> quantize(
     case QuantizationType::Affine:
       return fast::affine_quantize(w, group_size, bits, s);
     case QuantizationType::AffinePacked: {
-      if (bits & (bits - 1)) {
-        std::ostringstream msg;
-        msg << "[quantize] Quantization type '" << quantization_type
-            << "' does not support " << bits << " bits.";
-        throw std::invalid_argument(msg.str());
-      }
       auto [wq, scales, biases] = fast::affine_quantize(w, group_size, bits, s);
 
-      scales = unflatten(scales, -2, {-1, 4}, s);
-      biases = unflatten(biases, -2, {-1, 4}, s);
+      int pow2_bits = (bits & (bits - 1)) == 0;
+      int row_packing = (pow2_bits) ? 4 : 2;
+
+      scales = unflatten(scales, -2, {-1, row_packing}, s);
+      biases = unflatten(biases, -2, {-1, row_packing}, s);
       scales = concatenate({scales, biases}, -2, s);
       scales = moveaxis(scales, -2, -1, s);
       scales = flatten(scales, -2, -1, s);
 
-      wq = unflatten(wq, -2, {-1, 4}, s);
-      wq = moveaxis(wq, -2, -1, s);
-      wq = flatten(wq, -2, -1, s);
+      if (pow2_bits) {
+        wq = unflatten(wq, -2, {-1, row_packing}, s);
+        wq = moveaxis(wq, -2, -1, s);
+        wq = flatten(wq, -2, -1, s);
+      }
 
       return std::make_tuple(wq, scales, std::nullopt);
     }

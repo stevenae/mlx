@@ -405,10 +405,11 @@ void affine_packed_qmv(
   auto w = ensure_row_contiguous_last_dims(inputs[1]);
   auto scales = ensure_row_contiguous_last_dims(inputs[2]);
 
+  const bool pow2_bits = (bits & (bits - 1)) == 0;
   const int n_simdgroups = 2;
-  const int n_outs_per_simdgroup = 4;
+  const int results_per_simdgroup = (pow2_bits) ? 4 : 2;
   MTL::Size group_dims(32, n_simdgroups, 1);
-  MTL::Size grid_dims(O / n_simdgroups / n_outs_per_simdgroup, B, 1);
+  MTL::Size grid_dims(O / n_simdgroups / results_per_simdgroup, B, 1);
 
   std::string name;
   name.reserve(64);
