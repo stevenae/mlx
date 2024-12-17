@@ -70,9 +70,11 @@ class Linear(Module):
             x = x @ self["weight"].T
         return x
 
-    def to_quantized(self, group_size: int = 64, bits: int = 4):
+    def to_quantized(
+        self, group_size: int = 64, bits: int = 4, quantization_type: str = "affine"
+    ):
         """Return a :obj:`QuantizedLinear` layer that approximates this layer."""
-        return QuantizedLinear.from_linear(self, group_size, bits)
+        return QuantizedLinear.from_linear(self, group_size, bits, quantization_type)
 
 
 class Bilinear(Module):
