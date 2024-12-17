@@ -104,8 +104,12 @@
   instantiate_quantized_split_k(qvm_split_k, type, group_size, bits, 8)   \
   instantiate_quantized_split_k(qvm_split_k, type, group_size, bits, 32)
 
-#define instantiate_quantized_all_affine_packed(type, group_size, bits) \
-  instantiate_quantized_affine_packed(affine_packed_qmv_fast, type, group_size, bits)
+#define instantiate_quantized_all_affine_packed(type, group_size, bits)                            \
+  instantiate_quantized_affine_packed(affine_packed_qmv_fast, type, group_size, bits)              \
+  instantiate_quantized_aligned_batched(affine_packed_qmm_t, type, group_size, bits, true, true)   \
+  instantiate_quantized_aligned_batched(affine_packed_qmm_t, type, group_size, bits, true, false)  \
+  instantiate_quantized_aligned_batched(affine_packed_qmm_t, type, group_size, bits, false, true)  \
+  instantiate_quantized_aligned_batched(affine_packed_qmm_t, type, group_size, bits, false, false)
 
 #define instantiate_quantized_funcs(type, group_size, bits) \
   instantiate_quantized_all_single(type, group_size, bits)  \

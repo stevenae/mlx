@@ -428,8 +428,91 @@ void affine_packed_qmv(
   compute_encoder.set_input_array(scales, 1);
   compute_encoder.set_input_array(x, 2);
   compute_encoder.set_output_array(out, 3);
-  compute_encoder.set_bytes(D, 5);
-  compute_encoder.set_bytes(O, 6);
+  compute_encoder.set_bytes(D, 4);
+  compute_encoder.set_bytes(O, 5);
+  compute_encoder.dispatch_threadgroups(grid_dims, group_dims);
+}
+
+void affine_packed_qmm_t(
+    const std::vector<array>& inputs,
+    array& out,
+    bool batched,
+    int B,
+    int D,
+    int O,
+    int group_size,
+    int bits,
+    const Stream& s) {
+  out.set_data(allocator::malloc_or_wait(out.nbytes()));
+
+  auto& d = metal::device(s.device);
+  auto ensure_row_contiguous_last_dims = [&d, &s](const array& arr) {
+    auto stride_0 = arr.strides()[arr.ndim() - 2];
+    auto stride_1 = arr.strides()[arr.ndim() - 1];
+    if (stride_0 == arr.shape(-1) && stride_1 == 1) {
+      return arr;
+    } else {
+      array arr_copy(arr.shape(), arr.dtype(), nullptr, {});
+      copy_gpu(arr, arr_copy, CopyType::General, s);
+      d.add_temporary(arr_copy, s.index);
+      return arr_copy;
+    }
+  };
+  // TODO: Deal with this in routing towards qmm_n instead of qmm_t
+  auto x = ensure_row_contiguous_last_dims(inputs[0]);
+  auto w = ensure_row_contiguous_last_dims(inputs[1]);
+  auto scales = ensure_row_contiguous_last_dims(inputs[2]);
+
+  int x_batch_ndims = x.ndim() - 2;
+  auto& x_shape = x.shape();
+  auto& x_strides = x.strides();
+  int w_batch_ndims = w.ndim() - 2;
+  auto& w_shape = w.shape();
+  auto& w_strides = w.strides();
+  auto& s_strides = scales.strides();
+
+  const int wn = 2;
+  const int wm = 2;
+  const int bm = 32;
+  const int bn = 32;
+  const int N = (batched) ? out.size() / B / O : 1;
+  MTL::Size group_dims(32, wn, wm);
+  MTL::Size grid_dims((O + bn - 1) / bn, (B + bm - 1) / bm, N);
+
+  std::string name;
+  name.reserve(64);
+  concatenate(
+      name,
+      "affine_packed_qmm_t_",
+      get_type_string(out.dtype()),
+      "_gs_",
+      std::to_string(group_size),
+      "_b_",
+      std::to_string(bits),
+      "_alN_",
+      ((O % 32) == 0) ? "true" : "false",
+      "_batch_",
+      (batched) ? "true" : "false");
+  auto kernel = get_quantized_kernel(d, name, "");
+  auto& compute_encoder = d.get_command_encoder(s.index);
+  compute_encoder.set_compute_pipeline_state(kernel);
+
+  compute_encoder.set_input_array(w, 0);
+  compute_encoder.set_input_array(scales, 1);
+  compute_encoder.set_input_array(x, 2);
+  compute_encoder.set_output_array(out, 3);
+  compute_encoder.set_bytes(D, 4);
+  compute_encoder.set_bytes(O, 5);
+  compute_encoder.set_bytes(B, 6);
+  if (batched) {
+    compute_encoder.set_bytes(x_batch_ndims, 7);
+    compute_encoder.set_vector_bytes(x_shape, 8);
+    compute_encoder.set_vector_bytes(x_strides, 9);
+    compute_encoder.set_bytes(w_batch_ndims, 10);
+    compute_encoder.set_vector_bytes(w_shape, 11);
+    compute_encoder.set_vector_bytes(w_strides, 12);
+    compute_encoder.set_vector_bytes(s_strides, 13);
+  }
   compute_encoder.dispatch_threadgroups(grid_dims, group_dims);
 }
 
@@ -451,6 +534,7 @@ void affine_packed_qmm_op(
     if (B < 6) {
       affine_packed_qmv(inputs, out, B, D, O, group_size, bits, s);
     } else {
+      affine_packed_qmm_t(inputs, out, batched, B, D, O, group_size, bits, s);
     }
   } else {
   }
