@@ -4206,7 +4206,7 @@ void init_ops(nb::module_& m) {
       nb::arg(),
       nb::arg(),
       "scales"_a,
-      "biases"_a,
+      "biases"_a = nb::none(),
       "lhs_indices"_a = nb::none(),
       "rhs_indices"_a = nb::none(),
       "transpose"_a = true,
