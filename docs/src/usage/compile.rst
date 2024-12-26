@@ -227,7 +227,8 @@ In some cases returning updated state can be pretty inconvenient. Hence,
       state.append(z)
       return mx.exp(z), state
 
-  fun(mx.array(1.0), mx.array(2.0))
+  # Prints (array(20.0855, dtype=float32), [array(3, dtype=float32), array(3, dtype=float32)])
+  fun(mx.array(1.0), mx.array(2.0)
   # Prints [array(3, dtype=float32)]
   print(state)
 
